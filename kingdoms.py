@@ -4,13 +4,13 @@ import os
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 
-BASE_HTML = '''
-<!DOCTYPE html>
+# Ana template base HTML
+BASE_HTML = '''<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Discord Bot Hizmetleri{% endblock %}</title>
+    <title>Discord Bot Hizmetleri</title>
     <style>
         :root {
             --primary: #5865F2;
@@ -443,7 +443,9 @@ BASE_HTML = '''
         </div>
     </header>
 
-    {% block content %}{% endblock %}
+    <main>
+        {{ content|safe }}
+    </main>
 
     <footer>
         <div class="container">
@@ -481,11 +483,10 @@ BASE_HTML = '''
         </div>
     </footer>
 </body>
-</html>
-'''
+</html>'''
 
+# Sayfa içerikleri
 INDEX_CONTENT = '''
-{% block content %}
 <section class="hero">
     <div class="container">
         <div class="hero-content">
@@ -556,11 +557,9 @@ INDEX_CONTENT = '''
         </div>
     </div>
 </section>
-{% endblock %}
 '''
 
 SERVICES_CONTENT = '''
-{% block content %}
 <section class="services" style="padding-top: 120px;">
     <div class="container">
         <div class="section-title">
@@ -589,59 +588,15 @@ SERVICES_CONTENT = '''
         </div>
     </div>
 </section>
-{% endblock %}
-'''
-
-SERVICE_DETAIL_CONTENT = '''
-{% block title %}{{ hizmet.ad }} - BotLand{% endblock %}
-{% block content %}
-<section class="service-detail">
-    <div class="container">
-        <div class="service-header">
-            <h1>{{ hizmet.ad }}</h1>
-            <div class="service-price">{{ hizmet.fiyat }}</div>
-            <p class="service-description">{{ hizmet.aciklama }}</p>
-            <a href="/iletisim" class="btn">Hemen Sipariş Ver</a>
-            <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord'da Sor</a>
-        </div>
-        
-        <div class="features-list">
-            <h2>Özellikler</h2>
-            <ul>
-                {% for ozellik in hizmet.ozellikler %}
-                <li>{{ ozellik }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        
-        <div class="cta-section">
-            <h2>Hemen Başlayın!</h2>
-            <p>Bu premium botu satın almak için hemen iletişime geçin</p>
-            <a href="/iletisim" class="btn">İletişime Geç</a>
-        </div>
-    </div>
-</section>
-{% endblock %}
 '''
 
 CONTACT_CONTENT = '''
-{% block content %}
 <section class="contact">
     <div class="container">
         <div class="section-title">
             <h2>İletişim</h2>
             <p>Bize ulaşın, en kısa sürede dönüş yapalım</p>
         </div>
-        
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for category, message in messages %}
-                        <div class="flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
         
         <div class="contact-form">
             <form method="POST" action="/iletisim">
@@ -668,21 +623,20 @@ CONTACT_CONTENT = '''
         </div>
     </div>
 </section>
-{% endblock %}
 '''
 
 # Route definitions
 @app.route('/')
 def index():
-    return render_template_string(BASE_HTML + INDEX_CONTENT)
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', INDEX_CONTENT))
 
 @app.route('/hizmetler')
 def hizmetler():
-    return render_template_string(BASE_HTML + SERVICES_CONTENT)
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', SERVICES_CONTENT))
 
 @app.route('/iletisim')
 def iletisim():
-    return render_template_string(BASE_HTML + CONTACT_CONTENT)
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', CONTACT_CONTENT))
 
 @app.route('/hizmet/<hizmet_adi>')
 def hizmet_detay(hizmet_adi):
@@ -722,7 +676,34 @@ def hizmet_detay(hizmet_adi):
     }
     
     if hizmet_adi in hizmetler:
-        return render_template_string(BASE_HTML + SERVICE_DETAIL_CONTENT, hizmet=hizmetler[hizmet_adi])
+        hizmet = hizmetler[hizmet_adi]
+        service_detail_content = f'''
+        <section class="service-detail">
+            <div class="container">
+                <div class="service-header">
+                    <h1>{hizmet['ad']}</h1>
+                    <div class="service-price">{hizmet['fiyat']}</div>
+                    <p class="service-description">{hizmet['aciklama']}</p>
+                    <a href="/iletisim" class="btn">Hemen Sipariş Ver</a>
+                    <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord\'da Sor</a>
+                </div>
+                
+                <div class="features-list">
+                    <h2>Özellikler</h2>
+                    <ul>
+                        {"".join([f'<li>{ozellik}</li>' for ozellik in hizmet['ozellikler']])}
+                    </ul>
+                </div>
+                
+                <div class="cta-section">
+                    <h2>Hemen Başlayın!</h2>
+                    <p>Bu premium botu satın almak için hemen iletişime geçin</p>
+                    <a href="/iletisim" class="btn">İletişime Geç</a>
+                </div>
+            </div>
+        </section>
+        '''
+        return render_template_string(BASE_HTML.replace('{{ content|safe }}', service_detail_content))
     else:
         return redirect(url_for('hizmetler'))
 
@@ -732,8 +713,14 @@ def iletisim_formu():
     email = request.form.get('email')
     mesaj = request.form.get('mesaj')
     
-    flash('Mesajınız başarıyla gönderildi! En kısa sürede sizinle iletişime geçeceğiz.', 'success')
-    return redirect(url_for('iletisim'))
+    flash_content = '''
+    <div class="flash-messages">
+        <div class="flash-success">Mesajınız başarıyla gönderildi! En kısa sürede sizinle iletişime geçeceğiz.</div>
+    </div>
+    '''
+    
+    contact_with_flash = CONTACT_CONTENT.replace('</div>\n        \n        <div class="contact-form">', f'</div>\n        {flash_content}\n        <div class="contact-form">')
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', contact_with_flash))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
