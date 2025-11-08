@@ -4,7 +4,7 @@ import os
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
 
-HTML_TEMPLATE = '''
+BASE_HTML = '''
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -485,8 +485,6 @@ HTML_TEMPLATE = '''
 '''
 
 INDEX_CONTENT = '''
-{% extends "base.html" %}
-
 {% block content %}
 <section class="hero">
     <div class="container">
@@ -562,8 +560,6 @@ INDEX_CONTENT = '''
 '''
 
 SERVICES_CONTENT = '''
-{% extends "base.html" %}
-
 {% block content %}
 <section class="services" style="padding-top: 120px;">
     <div class="container">
@@ -597,10 +593,7 @@ SERVICES_CONTENT = '''
 '''
 
 SERVICE_DETAIL_CONTENT = '''
-{% extends "base.html" %}
-
 {% block title %}{{ hizmet.ad }} - BotLand{% endblock %}
-
 {% block content %}
 <section class="service-detail">
     <div class="container">
@@ -632,8 +625,6 @@ SERVICE_DETAIL_CONTENT = '''
 '''
 
 CONTACT_CONTENT = '''
-{% extends "base.html" %}
-
 {% block content %}
 <section class="contact">
     <div class="container">
@@ -683,15 +674,15 @@ CONTACT_CONTENT = '''
 # Route definitions
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE + INDEX_CONTENT)
+    return render_template_string(BASE_HTML + INDEX_CONTENT)
 
 @app.route('/hizmetler')
 def hizmetler():
-    return render_template_string(HTML_TEMPLATE + SERVICES_CONTENT)
+    return render_template_string(BASE_HTML + SERVICES_CONTENT)
 
 @app.route('/iletisim')
 def iletisim():
-    return render_template_string(HTML_TEMPLATE + CONTACT_CONTENT)
+    return render_template_string(BASE_HTML + CONTACT_CONTENT)
 
 @app.route('/hizmet/<hizmet_adi>')
 def hizmet_detay(hizmet_adi):
@@ -731,7 +722,7 @@ def hizmet_detay(hizmet_adi):
     }
     
     if hizmet_adi in hizmetler:
-        return render_template_string(HTML_TEMPLATE + SERVICE_DETAIL_CONTENT, hizmet=hizmetler[hizmet_adi])
+        return render_template_string(BASE_HTML + SERVICE_DETAIL_CONTENT, hizmet=hizmetler[hizmet_adi])
     else:
         return redirect(url_for('hizmetler'))
 
@@ -741,9 +732,8 @@ def iletisim_formu():
     email = request.form.get('email')
     mesaj = request.form.get('mesaj')
     
-    # Burada mesajı kaydedebilir veya e-posta gönderebilirsiniz
     flash('Mesajınız başarıyla gönderildi! En kısa sürede sizinle iletişime geçeceğiz.', 'success')
     return redirect(url_for('iletisim'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
