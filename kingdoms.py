@@ -1,8 +1,57 @@
-from flask import Flask, render_template_string, request, redirect, url_for, flash
+from flask import Flask, render_template_string, request, redirect, url_for, flash, session
 import os
+import sqlite3
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'
+app.secret_key = 'botland_secret_key_2024'
+app.config['DATABASE'] = 'botland.db'
+
+def init_db():
+    conn = sqlite3.connect(app.config['DATABASE'])
+    c = conn.cursor()
+    
+    # Kullanıcılar tablosu
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_admin BOOLEAN DEFAULT FALSE
+        )
+    ''')
+    
+    # Siparişler tablosu
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            service_type TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            admin_response TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Admin kullanıcısını oluştur
+    c.execute('SELECT * FROM users WHERE username = ?', ('admin',))
+    if not c.fetchone():
+        hashed_password = generate_password_hash('botland1985')
+        c.execute('INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
+                 ('admin', 'admin@botland.com', hashed_password, True))
+    
+    conn.commit()
+    conn.close()
+
+def get_db_connection():
+    conn = sqlite3.connect(app.config['DATABASE'])
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # Ana template base HTML
 BASE_HTML = '''<!DOCTYPE html>
@@ -19,6 +68,8 @@ BASE_HTML = '''<!DOCTYPE html>
             --light: #f6f6f6;
             --gray: #4e5058;
             --success: #3ba55c;
+            --warning: #faa81a;
+            --danger: #ed4245;
         }
         
         * {
@@ -70,10 +121,11 @@ BASE_HTML = '''<!DOCTYPE html>
         .nav-links {
             display: flex;
             list-style: none;
+            align-items: center;
         }
         
         .nav-links li {
-            margin-left: 30px;
+            margin-left: 20px;
         }
         
         .nav-links a {
@@ -85,6 +137,54 @@ BASE_HTML = '''<!DOCTYPE html>
         
         .nav-links a:hover {
             color: var(--primary);
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-info {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s, transform 0.3s;
+            margin: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn:hover {
+            background-color: #4752c4;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background-color: transparent;
+            border: 2px solid var(--primary);
+        }
+        
+        .btn-success {
+            background-color: var(--success);
+        }
+        
+        .btn-warning {
+            background-color: var(--warning);
+        }
+        
+        .btn-danger {
+            background-color: var(--danger);
         }
         
         .hero {
@@ -114,28 +214,6 @@ BASE_HTML = '''<!DOCTYPE html>
             font-size: 1.2rem;
             margin-bottom: 30px;
             color: #b9bbbe;
-        }
-        
-        .btn {
-            display: inline-block;
-            background-color: var(--primary);
-            color: white;
-            padding: 12px 30px;
-            border-radius: 5px;
-            text-decoration: none;
-            font-weight: bold;
-            transition: background-color 0.3s, transform 0.3s;
-            margin: 5px;
-        }
-        
-        .btn:hover {
-            background-color: #4752c4;
-            transform: translateY(-3px);
-        }
-        
-        .btn-secondary {
-            background-color: transparent;
-            border: 2px solid var(--primary);
         }
         
         .services {
@@ -409,6 +487,80 @@ BASE_HTML = '''<!DOCTYPE html>
             margin-bottom: 20px;
         }
         
+        .flash-error {
+            background-color: var(--danger);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .auth-forms {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 0;
+        }
+        
+        .auth-form {
+            background-color: var(--dark);
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .auth-form h2 {
+            margin-bottom: 20px;
+            color: var(--light);
+            text-align: center;
+        }
+        
+        .admin-panel {
+            padding: 40px 0;
+        }
+        
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: var(--dark);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .orders-table th,
+        .orders-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .orders-table th {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .status-pending {
+            color: var(--warning);
+            font-weight: bold;
+        }
+        
+        .status-completed {
+            color: var(--success);
+            font-weight: bold;
+        }
+        
+        .status-cancelled {
+            color: var(--danger);
+            font-weight: bold;
+        }
+        
+        .user-orders {
+            padding: 40px 0;
+        }
+        
         @media (max-width: 768px) {
             .navbar {
                 flex-direction: column;
@@ -416,14 +568,20 @@ BASE_HTML = '''<!DOCTYPE html>
             
             .nav-links {
                 margin-top: 20px;
+                flex-direction: column;
+                gap: 10px;
             }
             
             .nav-links li {
-                margin: 0 15px;
+                margin: 0;
             }
             
             .hero h1 {
                 font-size: 2.5rem;
+            }
+            
+            .auth-forms {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -438,6 +596,21 @@ BASE_HTML = '''<!DOCTYPE html>
                     <li><a href="/hizmetler">Hizmetler</a></li>
                     <li><a href="/iletisim">İletişim</a></li>
                     <li><a href="https://discord.gg/botland" target="_blank">Discord</a></li>
+                    {% if 'user_id' in session %}
+                        <li class="user-menu">
+                            <span class="user-info">Hoş geldin, {{ session.username }}</span>
+                            <a href="/siparislerim" class="btn">Siparişlerim</a>
+                            {% if session.get('is_admin') %}
+                                <a href="/admin" class="btn btn-warning">Admin Panel</a>
+                            {% endif %}
+                            <a href="/cikis" class="btn btn-secondary">Çıkış</a>
+                        </li>
+                    {% else %}
+                        <li class="user-menu">
+                            <a href="/giris" class="btn btn-secondary">Giriş Yap</a>
+                            <a href="/kayit" class="btn">Kayıt Ol</a>
+                        </li>
+                    {% endif %}
                 </ul>
             </nav>
         </div>
@@ -638,6 +811,137 @@ def hizmetler():
 def iletisim():
     return render_template_string(BASE_HTML.replace('{{ content|safe }}', CONTACT_CONTENT))
 
+@app.route('/kayit')
+def kayit():
+    kayit_content = '''
+    <section class="contact">
+        <div class="container">
+            <div class="auth-forms">
+                <div class="auth-form">
+                    <h2>Kayıt Ol</h2>
+                    <form method="POST" action="/kayit">
+                        <div class="form-group">
+                            <label for="username">Kullanıcı Adı</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">E-posta</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Şifre</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn">Kayıt Ol</button>
+                    </form>
+                </div>
+                <div class="auth-form">
+                    <h2>Zaten Hesabınız Var mı?</h2>
+                    <p>Hesabınız varsa giriş yaparak sipariş verebilir ve siparişlerinizi takip edebilirsiniz.</p>
+                    <a href="/giris" class="btn btn-secondary">Giriş Yap</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    '''
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_content))
+
+@app.route('/kayit', methods=['POST'])
+def kayit_post():
+    username = request.form.get('username')
+    email = request.form.get('email')
+    password = request.form.get('password')
+    
+    conn = get_db_connection()
+    
+    # Kullanıcı adı veya email zaten var mı kontrol et
+    existing_user = conn.execute('SELECT * FROM users WHERE username = ? OR email = ?', 
+                               (username, email)).fetchone()
+    
+    if existing_user:
+        conn.close()
+        flash_content = '''
+        <div class="flash-messages">
+            <div class="flash-error">Bu kullanıcı adı veya e-posta zaten kullanılıyor!</div>
+        </div>
+        '''
+        kayit_with_flash = kayit_content.replace('<h2>Kayıt Ol</h2>', f'{flash_content}<h2>Kayıt Ol</h2>')
+        return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_with_flash))
+    
+    # Yeni kullanıcı oluştur
+    hashed_password = generate_password_hash(password)
+    conn.execute('INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
+                (username, email, hashed_password))
+    conn.commit()
+    conn.close()
+    
+    flash_content = '''
+    <div class="flash-messages">
+        <div class="flash-success">Kayıt başarılı! Giriş yapabilirsiniz.</div>
+    </div>
+    '''
+    kayit_with_flash = kayit_content.replace('<h2>Kayıt Ol</h2>', f'{flash_content}<h2>Kayıt Ol</h2>')
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_with_flash))
+
+@app.route('/giris')
+def giris():
+    giris_content = '''
+    <section class="contact">
+        <div class="container">
+            <div class="auth-forms">
+                <div class="auth-form">
+                    <h2>Giriş Yap</h2>
+                    <form method="POST" action="/giris">
+                        <div class="form-group">
+                            <label for="username">Kullanıcı Adı</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Şifre</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn">Giriş Yap</button>
+                    </form>
+                </div>
+                <div class="auth-form">
+                    <h2>Hesabınız Yok mu?</h2>
+                    <p>Hesap oluşturarak sipariş verebilir ve siparişlerinizi takip edebilirsiniz.</p>
+                    <a href="/kayit" class="btn btn-secondary">Kayıt Ol</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    '''
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', giris_content))
+
+@app.route('/giris', methods=['POST'])
+def giris_post():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+    conn.close()
+    
+    if user and check_password_hash(user['password'], password):
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['is_admin'] = user['is_admin']
+        return redirect('/')
+    else:
+        flash_content = '''
+        <div class="flash-messages">
+            <div class="flash-error">Kullanıcı adı veya şifre hatalı!</div>
+        </div>
+        '''
+        giris_with_flash = giris_content.replace('<h2>Giriş Yap</h2>', f'{flash_content}<h2>Giriş Yap</h2>')
+        return render_template_string(BASE_HTML.replace('{{ content|safe }}', giris_with_flash))
+
+@app.route('/cikis')
+def cikis():
+    session.clear()
+    return redirect('/')
+
 @app.route('/hizmet/<hizmet_adi>')
 def hizmet_detay(hizmet_adi):
     hizmetler = {
@@ -677,6 +981,25 @@ def hizmet_detay(hizmet_adi):
     
     if hizmet_adi in hizmetler:
         hizmet = hizmetler[hizmet_adi]
+        
+        # Sipariş butonu - giriş yapmış kullanıcılar için
+        siparis_butonu = '''
+        <div style="text-align: center; margin-top: 30px;">
+            <h3>Bu hizmeti satın almak istiyor musunuz?</h3>
+            <form method="POST" action="/siparis-ver" style="display: inline-block;">
+                <input type="hidden" name="service_type" value="''' + hizmet['ad'] + '''">
+                <textarea name="description" placeholder="Özel isteklerinizi buraya yazın..." style="width: 100%; margin: 10px 0; padding: 10px; background: var(--darker); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 5px;"></textarea>
+                <button type="submit" class="btn btn-success">Sipariş Ver</button>
+            </form>
+        </div>
+        ''' if 'user_id' in session else '''
+        <div style="text-align: center; margin-top: 30px;">
+            <h3>Bu hizmeti satın almak için giriş yapın</h3>
+            <a href="/giris" class="btn">Giriş Yap</a>
+            <a href="/kayit" class="btn btn-secondary">Kayıt Ol</a>
+        </div>
+        '''
+        
         service_detail_content = f'''
         <section class="service-detail">
             <div class="container">
@@ -684,8 +1007,8 @@ def hizmet_detay(hizmet_adi):
                     <h1>{hizmet['ad']}</h1>
                     <div class="service-price">{hizmet['fiyat']}</div>
                     <p class="service-description">{hizmet['aciklama']}</p>
-                    <a href="/iletisim" class="btn">Hemen Sipariş Ver</a>
-                    <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord\'da Sor</a>
+                    <a href="/iletisim" class="btn">İletişime Geç</a>
+                    <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord'da Sor</a>
                 </div>
                 
                 <div class="features-list">
@@ -695,17 +1018,188 @@ def hizmet_detay(hizmet_adi):
                     </ul>
                 </div>
                 
-                <div class="cta-section">
-                    <h2>Hemen Başlayın!</h2>
-                    <p>Bu premium botu satın almak için hemen iletişime geçin</p>
-                    <a href="/iletisim" class="btn">İletişime Geç</a>
-                </div>
+                {siparis_butonu}
             </div>
         </section>
         '''
         return render_template_string(BASE_HTML.replace('{{ content|safe }}', service_detail_content))
     else:
         return redirect(url_for('hizmetler'))
+
+@app.route('/siparis-ver', methods=['POST'])
+def siparis_ver():
+    if 'user_id' not in session:
+        return redirect('/giris')
+    
+    service_type = request.form.get('service_type')
+    description = request.form.get('description', '')
+    
+    conn = get_db_connection()
+    conn.execute('INSERT INTO orders (user_id, service_type, description) VALUES (?, ?, ?)',
+                (session['user_id'], service_type, description))
+    conn.commit()
+    conn.close()
+    
+    return redirect('/siparislerim')
+
+@app.route('/siparislerim')
+def siparislerim():
+    if 'user_id' not in session:
+        return redirect('/giris')
+    
+    conn = get_db_connection()
+    orders = conn.execute('''
+        SELECT o.*, u.username 
+        FROM orders o 
+        JOIN users u ON o.user_id = u.id 
+        WHERE o.user_id = ? 
+        ORDER BY o.created_at DESC
+    ''', (session['user_id'],)).fetchall()
+    conn.close()
+    
+    orders_html = ''
+    for order in orders:
+        status_class = f"status-{order['status']}"
+        orders_html += f'''
+        <tr>
+            <td>{order['id']}</td>
+            <td>{order['service_type']}</td>
+            <td>{order['description'] or '-'}</td>
+            <td class="{status_class}">{order['status'].title()}</td>
+            <td>{order['created_at']}</td>
+            <td>{order['admin_response'] or '-'}</td>
+        </tr>
+        '''
+    
+    siparislerim_content = f'''
+    <section class="user-orders">
+        <div class="container">
+            <h2>Siparişlerim</h2>
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Hizmet</th>
+                        <th>Açıklama</th>
+                        <th>Durum</th>
+                        <th>Tarih</th>
+                        <th>Admin Yanıtı</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {orders_html if orders_html else '<tr><td colspan="6" style="text-align: center;">Henüz siparişiniz bulunmuyor.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    '''
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', siparislerim_content))
+
+@app.route('/admin')
+def admin_panel():
+    if not session.get('is_admin'):
+        return redirect('/')
+    
+    conn = get_db_connection()
+    orders = conn.execute('''
+        SELECT o.*, u.username 
+        FROM orders o 
+        JOIN users u ON o.user_id = u.id 
+        ORDER BY o.created_at DESC
+    ''').fetchall()
+    conn.close()
+    
+    orders_html = ''
+    for order in orders:
+        status_class = f"status-{order['status']}"
+        
+        # Durum değiştirme butonları
+        status_buttons = f'''
+        <form method="POST" action="/admin/siparis-durum" style="display: inline;">
+            <input type="hidden" name="order_id" value="{order['id']}">
+            <button type="submit" name="status" value="completed" class="btn btn-success">Tamamlandı</button>
+            <button type="submit" name="status" value="cancelled" class="btn btn-danger">İptal</button>
+        </form>
+        ''' if order['status'] == 'pending' else f'<span class="{status_class}">{order["status"].title()}</span>'
+        
+        # Admin yanıtı formu
+        response_form = f'''
+        <form method="POST" action="/admin/yanit-ver">
+            <input type="hidden" name="order_id" value="{order['id']}">
+            <textarea name="response" placeholder="Yanıtınızı yazın..." style="width: 100%; margin: 5px 0; padding: 5px; background: var(--darker); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 3px; font-size: 12px;"></textarea>
+            <button type="submit" class="btn" style="padding: 5px 10px; font-size: 12px;">Yanıt Ver</button>
+        </form>
+        '''
+        
+        orders_html += f'''
+        <tr>
+            <td>{order['id']}</td>
+            <td>{order['username']}</td>
+            <td>{order['service_type']}</td>
+            <td>{order['description'] or '-'}</td>
+            <td>{status_buttons}</td>
+            <td>{order['created_at']}</td>
+            <td>
+                {order['admin_response'] or '-'}
+                {response_form}
+            </td>
+        </tr>
+        '''
+    
+    admin_content = f'''
+    <section class="admin-panel">
+        <div class="container">
+            <h2>Admin Panel - Sipariş Yönetimi</h2>
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Kullanıcı</th>
+                        <th>Hizmet</th>
+                        <th>Açıklama</th>
+                        <th>Durum</th>
+                        <th>Tarih</th>
+                        <th>Yanıt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {orders_html if orders_html else '<tr><td colspan="7" style="text-align: center;">Henüz sipariş bulunmuyor.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    '''
+    return render_template_string(BASE_HTML.replace('{{ content|safe }}', admin_content))
+
+@app.route('/admin/siparis-durum', methods=['POST'])
+def admin_siparis_durum():
+    if not session.get('is_admin'):
+        return redirect('/')
+    
+    order_id = request.form.get('order_id')
+    status = request.form.get('status')
+    
+    conn = get_db_connection()
+    conn.execute('UPDATE orders SET status = ? WHERE id = ?', (status, order_id))
+    conn.commit()
+    conn.close()
+    
+    return redirect('/admin')
+
+@app.route('/admin/yanit-ver', methods=['POST'])
+def admin_yanit_ver():
+    if not session.get('is_admin'):
+        return redirect('/')
+    
+    order_id = request.form.get('order_id')
+    response = request.form.get('response')
+    
+    conn = get_db_connection()
+    conn.execute('UPDATE orders SET admin_response = ? WHERE id = ?', (response, order_id))
+    conn.commit()
+    conn.close()
+    
+    return redirect('/admin')
 
 @app.route('/iletisim', methods=['POST'])
 def iletisim_formu():
@@ -723,4 +1217,6 @@ def iletisim_formu():
     return render_template_string(BASE_HTML.replace('{{ content|safe }}', contact_with_flash))
 
 if __name__ == '__main__':
+    with app.app_context():
+        init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
