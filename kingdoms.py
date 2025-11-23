@@ -1,13 +1,12 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session, flash
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
-import os
 import time
+import os
 
 app = Flask(__name__)
-app.secret_key = 'orender_professional_secret_2024'
+app.secret_key = os.environ.get('SECRET_KEY', 'orender_professional_secret_2024')
 
-# HTML Template
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="tr">
@@ -1164,4 +1163,5 @@ def logout():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
