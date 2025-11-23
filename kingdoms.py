@@ -1,1222 +1,1167 @@
-from flask import Flask, render_template_string, request, redirect, url_for, flash, session
-import os
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash
 import sqlite3
-from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import os
+import time
 
 app = Flask(__name__)
-app.secret_key = 'botland_secret_key_2024'
-app.config['DATABASE'] = 'botland.db'
+app.secret_key = 'orender_professional_secret_2024'
 
-def init_db():
-    conn = sqlite3.connect(app.config['DATABASE'])
-    c = conn.cursor()
-    
-    # Kullanıcılar tablosu
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_admin BOOLEAN DEFAULT FALSE
-        )
-    ''')
-    
-    # Siparişler tablosu
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            service_type TEXT NOT NULL,
-            description TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            admin_response TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    # Admin kullanıcısını oluştur
-    c.execute('SELECT * FROM users WHERE username = ?', ('admin',))
-    if not c.fetchone():
-        hashed_password = generate_password_hash('botland1985')
-        c.execute('INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
-                 ('admin', 'admin@botland.com', hashed_password, True))
-    
-    conn.commit()
-    conn.close()
-
-def get_db_connection():
-    conn = sqlite3.connect(app.config['DATABASE'])
-    conn.row_factory = sqlite3.Row
-    return conn
-
-# Ana template base HTML
-BASE_HTML = '''<!DOCTYPE html>
+# HTML Template
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discord Bot Hizmetleri</title>
+    <title>Orender Service - Profesyonel YouTube Büyüme Platformu</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #5865F2;
-            --dark: #1e1f22;
-            --darker: #111214;
-            --light: #f6f6f6;
-            --gray: #4e5058;
-            --success: #3ba55c;
-            --warning: #faa81a;
-            --danger: #ed4245;
+            --dark-bg: #0a0a0a;
+            --darker-bg: #050505;
+            --card-bg: #111111;
+            --border-color: #222222;
+            --text-primary: #ffffff;
+            --text-secondary: #888888;
+            --youtube-red: #ff0000;
+            --youtube-dark-red: #cc0000;
+            --accent: #ff3333;
+            --success: #00d26a;
+            --warning: #ffaa00;
+            --discord-purple: #5865F2;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', 'Roboto', 'Arial', sans-serif;
         }
-        
+
         body {
-            background-color: var(--darker);
-            color: var(--light);
+            background: var(--dark-bg);
+            color: var(--text-primary);
             line-height: 1.6;
+            overflow-x: hidden;
+            font-weight: 400;
         }
-        
+
         .container {
-            width: 90%;
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
         }
-        
-        header {
-            background-color: var(--dark);
-            padding: 20px 0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-            position: sticky;
+
+        /* Auth Wall */
+        .auth-wall {
+            display: {% if not session.user_id %}flex{% else %}none{% endif %};
+            position: fixed;
             top: 0;
-            z-index: 100;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                linear-gradient(rgba(5, 5, 5, 0.85), rgba(5, 5, 5, 0.92)),
+                url('https://images.squarespace-cdn.com/content/v1/558d57a4e4b047b6f98af00b/1436932289461-Q5VZ13046Y0AP6QHHOWT/Reception+01_2.jpg?format=1500w');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
         }
-        
-        .navbar {
+
+        .auth-container {
+            background: rgba(17, 17, 17, 0.95);
+            padding: 3rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.7);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(135deg, var(--youtube-red) 0%, var(--accent) 100%);
+        }
+
+        .auth-logo {
+            font-size: 2.8rem;
+            font-weight: 800;
+            color: var(--youtube-red);
+            margin-bottom: 1rem;
+            letter-spacing: -1px;
+        }
+
+        .auth-logo i {
+            margin-right: 12px;
+        }
+
+        .auth-subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 1.8rem;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 16px 18px;
+            background: rgba(10, 10, 10, 0.8);
+            border: 1.5px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            font-weight: 400;
+            backdrop-filter: blur(10px);
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--youtube-red);
+            box-shadow: 0 0 0 3px rgba(255,0,0,0.15);
+            background: rgba(15, 15, 15, 0.9);
+        }
+
+        .btn {
+            padding: 16px 32px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--youtube-red) 0%, var(--youtube-dark-red) 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(255,0,0,0.3);
+        }
+
+        .btn-discord {
+            background: linear-gradient(135deg, var(--discord-purple) 0%, #4752c4 100%);
+            color: white;
+        }
+
+        .btn-discord:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(88, 101, 242, 0.3);
+        }
+
+        .auth-switch {
+            margin-top: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .auth-switch a {
+            color: var(--youtube-red);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .auth-switch a:hover {
+            color: var(--accent);
+        }
+
+        /* Main Content */
+        .main-content {
+            display: {% if session.user_id %}block{% else %}none{% endif %};
+        }
+
+        /* Header */
+        header {
+            background: rgba(5, 5, 5, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1.2rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-container {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--light);
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--youtube-red);
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            letter-spacing: -1px;
         }
-        
-        .logo span {
-            color: var(--primary);
+
+        .logo i {
+            margin-right: 12px;
+            font-size: 2.2rem;
         }
-        
+
         .nav-links {
             display: flex;
-            list-style: none;
+            gap: 2.5rem;
             align-items: center;
         }
-        
-        .nav-links li {
-            margin-left: 20px;
-        }
-        
+
         .nav-links a {
-            color: var(--light);
+            color: var(--text-primary);
             text-decoration: none;
             font-weight: 500;
-            transition: color 0.3s;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+            position: relative;
         }
-        
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--youtube-red);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
         .nav-links a:hover {
-            color: var(--primary);
+            color: var(--youtube-red);
         }
-        
+
         .user-menu {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 1.2rem;
         }
-        
-        .user-info {
-            color: var(--gray);
+
+        .user-email {
+            color: var(--text-secondary);
             font-size: 0.9rem;
+            font-weight: 500;
         }
-        
-        .btn {
-            display: inline-block;
-            background-color: var(--primary);
-            color: white;
+
+        .logout-btn {
+            background: transparent;
+            border: 1.5px solid var(--border-color);
+            color: var(--text-secondary);
             padding: 10px 20px;
-            border-radius: 5px;
-            text-decoration: none;
-            font-weight: bold;
-            transition: background-color 0.3s, transform 0.3s;
-            margin: 5px;
-            border: none;
+            border-radius: 10px;
             cursor: pointer;
-            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-decoration: none;
         }
-        
-        .btn:hover {
-            background-color: #4752c4;
+
+        .logout-btn:hover {
+            border-color: var(--youtube-red);
+            color: var(--youtube-red);
             transform: translateY(-2px);
         }
-        
-        .btn-secondary {
-            background-color: transparent;
-            border: 2px solid var(--primary);
-        }
-        
-        .btn-success {
-            background-color: var(--success);
-        }
-        
-        .btn-warning {
-            background-color: var(--warning);
-        }
-        
-        .btn-danger {
-            background-color: var(--danger);
-        }
-        
+
+        /* Hero Section */
         .hero {
-            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('https://images.unsplash.com/photo-1633265486064-086b86e124fe?ixlib=rb-4.0.3');
+            margin-top: 80px;
+            padding: 8rem 0;
+            background: 
+                linear-gradient(rgba(5, 5, 5, 0.92), rgba(5, 5, 5, 0.96)),
+                url('https://images.unsplash.com/photo-1611162617474-5b21e879e113?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2140&q=80');
             background-size: cover;
             background-position: center;
-            height: 80vh;
-            display: flex;
-            align-items: center;
+            background-attachment: fixed;
             text-align: center;
+            position: relative;
+            overflow: hidden;
         }
-        
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(255, 0, 0, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 0, 0, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 0, 0, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
         .hero-content {
-            max-width: 800px;
+            position: relative;
+            z-index: 2;
+            max-width: 900px;
             margin: 0 auto;
         }
-        
+
         .hero h1 {
-            font-size: 3.5rem;
-            margin-bottom: 20px;
-            background: linear-gradient(90deg, var(--primary), #9b59b6);
+            font-size: 4rem;
+            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #ffffff 0%, var(--youtube-red) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+            letter-spacing: -2px;
+            line-height: 1.1;
         }
-        
+
         .hero p {
-            font-size: 1.2rem;
-            margin-bottom: 30px;
-            color: #b9bbbe;
+            font-size: 1.4rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            line-height: 1.8;
+            font-weight: 400;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
+
+        .hero-buttons {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 3rem;
+        }
+
+        .hero-btn {
+            padding: 18px 35px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .hero-btn.primary {
+            background: linear-gradient(135deg, var(--youtube-red) 0%, var(--youtube-dark-red) 100%);
+            color: white;
+        }
+
+        .hero-btn.primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(255,0,0,0.3);
+        }
+
+        .hero-btn.secondary {
+            background: transparent;
+            border: 2px solid var(--youtube-red);
+            color: var(--youtube-red);
+        }
+
+        .hero-btn.secondary:hover {
+            background: var(--youtube-red);
+            color: white;
+            transform: translateY(-3px);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 2.5rem;
+            margin-top: 4rem;
+            padding: 0 2rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            position: relative;
+        }
+
+        .stat-item::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 3px;
+            background: var(--youtube-red);
+            border-radius: 2px;
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--youtube-red);
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Services Section */
         .services {
-            padding: 80px 0;
+            padding: 6rem 0;
+            background: var(--darker-bg);
+            position: relative;
         }
-        
+
+        .services::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+        }
+
         .section-title {
             text-align: center;
-            margin-bottom: 50px;
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            font-weight: 800;
+            letter-spacing: -1.5px;
         }
-        
-        .section-title h2 {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
-            color: var(--light);
-        }
-        
-        .section-title p {
-            color: var(--gray);
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            margin-bottom: 4rem;
+            font-size: 1.2rem;
+            font-weight: 400;
             max-width: 600px;
-            margin: 0 auto;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
+
         .services-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 2.5rem;
+            margin-top: 3rem;
         }
-        
+
         .service-card {
-            background-color: var(--dark);
-            border-radius: 10px;
+            background: var(--card-bg);
+            padding: 3rem 2.5rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
             overflow: hidden;
-            transition: transform 0.3s, box-shadow 0.3s;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            text-align: center;
         }
-        
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(135deg, var(--youtube-red) 0%, var(--accent) 100%);
+        }
+
+        .service-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 0, 0, 0.03), transparent);
+            transition: left 0.6s;
+        }
+
+        .service-card:hover::after {
+            left: 100%;
+        }
+
         .service-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+            transform: translateY(-12px);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+            border-color: rgba(255, 0, 0, 0.3);
         }
-        
-        .service-img {
-            height: 200px;
-            background: linear-gradient(135deg, var(--primary), #9b59b6);
+
+        .service-icon {
+            font-size: 3.5rem;
+            color: var(--youtube-red);
+            margin-bottom: 2rem;
+        }
+
+        .service-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .service-card p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.7;
+        }
+
+        .service-features {
+            list-style: none;
+            margin: 2rem 0;
+            text-align: left;
+        }
+
+        .service-features li {
+            padding: 1rem 0;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 400;
             display: flex;
             align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 3rem;
         }
-        
-        .service-content {
-            padding: 25px;
+
+        .service-features li:last-child {
+            border-bottom: none;
         }
-        
-        .service-content h3 {
-            font-size: 1.5rem;
-            margin-bottom: 15px;
-            color: var(--light);
-        }
-        
-        .service-content p {
-            color: var(--gray);
-            margin-bottom: 20px;
-        }
-        
-        .price {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--primary);
-            margin-bottom: 15px;
-        }
-        
-        .features {
-            padding: 80px 0;
-            background-color: var(--dark);
-        }
-        
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-        }
-        
-        .feature-card {
-            text-align: center;
-            padding: 30px 20px;
-        }
-        
-        .feature-icon {
-            font-size: 2.5rem;
-            margin-bottom: 20px;
-            color: var(--primary);
-        }
-        
-        .feature-card h3 {
-            font-size: 1.3rem;
-            margin-bottom: 15px;
-            color: var(--light);
-        }
-        
-        .feature-card p {
-            color: var(--gray);
-        }
-        
-        footer {
-            background-color: var(--dark);
-            padding: 50px 0 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .footer-content {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 40px;
-            margin-bottom: 40px;
-        }
-        
-        .footer-column h3 {
-            font-size: 1.2rem;
-            margin-bottom: 20px;
-            color: var(--light);
-        }
-        
-        .footer-links {
-            list-style: none;
-        }
-        
-        .footer-links li {
-            margin-bottom: 10px;
-        }
-        
-        .footer-links a {
-            color: var(--gray);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .footer-links a:hover {
-            color: var(--primary);
-        }
-        
-        .copyright {
-            text-align: center;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--gray);
-            font-size: 0.9rem;
-        }
-        
-        .service-detail {
-            padding: 80px 0;
-        }
-        
-        .service-header {
-            text-align: center;
-            margin-bottom: 50px;
-        }
-        
-        .service-header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
-            color: var(--light);
-        }
-        
-        .service-price {
-            font-size: 1.8rem;
-            color: var(--primary);
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-        
-        .service-description {
-            max-width: 800px;
-            margin: 0 auto 40px;
-            color: var(--gray);
-            font-size: 1.1rem;
-            line-height: 1.8;
-        }
-        
-        .features-list {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        
-        .features-list h2 {
-            font-size: 1.8rem;
-            margin-bottom: 20px;
-            color: var(--light);
-        }
-        
-        .features-list ul {
-            list-style: none;
-        }
-        
-        .features-list li {
-            padding: 15px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--gray);
-            position: relative;
-            padding-left: 30px;
-        }
-        
-        .features-list li:before {
-            content: "✓";
+
+        .service-features li i {
             color: var(--success);
-            position: absolute;
-            left: 0;
-            font-weight: bold;
+            margin-right: 12px;
+            font-size: 1.1rem;
+            min-width: 20px;
         }
-        
-        .cta-section {
-            text-align: center;
-            margin-top: 50px;
-        }
-        
-        .contact {
-            padding: 80px 0;
-        }
-        
-        .contact-form {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: var(--dark);
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--light);
-        }
-        
-        .form-control {
-            width: 100%;
-            padding: 12px 15px;
-            background-color: var(--darker);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 5px;
-            color: var(--light);
-            font-size: 1rem;
-        }
-        
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        
-        textarea.form-control {
-            min-height: 150px;
-            resize: vertical;
-        }
-        
-        .flash-messages {
-            max-width: 600px;
-            margin: 20px auto;
-        }
-        
-        .flash-success {
-            background-color: var(--success);
+
+        .discord-cta {
+            background: linear-gradient(135deg, var(--discord-purple) 0%, #4752c4 100%);
             color: white;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .flash-error {
-            background-color: var(--danger);
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .auth-forms {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 40px 0;
-        }
-        
-        .auth-form {
-            background-color: var(--dark);
-            padding: 40px;
+            padding: 15px 25px;
             border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
         }
-        
-        .auth-form h2 {
-            margin-bottom: 20px;
-            color: var(--light);
-            text-align: center;
+
+        .discord-cta:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(88, 101, 242, 0.3);
         }
-        
-        .admin-panel {
-            padding: 40px 0;
+
+        /* Dashboard */
+        .dashboard {
+            padding: 4rem 0;
+            background: var(--dark-bg);
+            min-height: 60vh;
         }
-        
-        .orders-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background-color: var(--dark);
-            border-radius: 10px;
+
+        .dashboard-welcome {
+            background: var(--card-bg);
+            padding: 3rem;
+            border-radius: 20px;
+            border-left: 5px solid var(--youtube-red);
+            margin-bottom: 3rem;
+            position: relative;
             overflow: hidden;
         }
-        
-        .orders-table th,
-        .orders-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+        .dashboard-welcome::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255,0,0,0.1) 0%, transparent 70%);
+            pointer-events: none;
         }
-        
-        .orders-table th {
-            background-color: var(--primary);
+
+        .dashboard-welcome h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        .dashboard-welcome p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            line-height: 1.7;
+            font-weight: 400;
+        }
+
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 2.5rem 2rem;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--youtube-red);
+        }
+
+        .stat-card h3 {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-card .number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--youtube-red);
+            line-height: 1;
+        }
+
+        /* Flash Messages */
+        .flash-messages {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .flash {
+            padding: 1.2rem 1.8rem;
+            margin-bottom: 1rem;
+            border-radius: 12px;
             color: white;
+            animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            min-width: 320px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border-left: 4px solid rgba(255,255,255,0.3);
         }
-        
-        .status-pending {
-            color: var(--warning);
-            font-weight: bold;
+
+        .flash.success {
+            background: linear-gradient(135deg, var(--success) 0%, #00b359 100%);
         }
-        
-        .status-completed {
-            color: var(--success);
-            font-weight: bold;
+
+        .flash.error {
+            background: linear-gradient(135deg, var(--youtube-red) 0%, var(--youtube-dark-red) 100%);
         }
-        
-        .status-cancelled {
-            color: var(--danger);
-            font-weight: bold;
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
-        
-        .user-orders {
-            padding: 40px 0;
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
         }
-        
+
+        /* Responsive */
+        @media (max-width: 968px) {
+            .hero h1 {
+                font-size: 3rem;
+            }
+            
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .section-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .hero-btn {
+                width: 100%;
+                max-width: 300px;
+                justify-content: center;
+            }
+        }
+
         @media (max-width: 768px) {
-            .navbar {
-                flex-direction: column;
-            }
-            
-            .nav-links {
-                margin-top: 20px;
-                flex-direction: column;
-                gap: 10px;
-            }
-            
-            .nav-links li {
-                margin: 0;
-            }
-            
             .hero h1 {
                 font-size: 2.5rem;
             }
             
-            .auth-forms {
-                grid-template-columns: 1fr;
+            .auth-container {
+                margin: 1rem;
+                padding: 2.5rem 2rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 2rem;
+                padding: 0 1rem;
+            }
+            
+            .stat-number {
+                font-size: 2.5rem;
             }
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <nav class="navbar">
-                <a href="/" class="logo">Bot<span>Land</span></a>
-                <ul class="nav-links">
-                    <li><a href="/">Ana Sayfa</a></li>
-                    <li><a href="/hizmetler">Hizmetler</a></li>
-                    <li><a href="/iletisim">İletişim</a></li>
-                    <li><a href="https://discord.gg/botland" target="_blank">Discord</a></li>
-                    {% if 'user_id' in session %}
-                        <li class="user-menu">
-                            <span class="user-info">Hoş geldin, {{ session.username }}</span>
-                            <a href="/siparislerim" class="btn">Siparişlerim</a>
-                            {% if session.get('is_admin') %}
-                                <a href="/admin" class="btn btn-warning">Admin Panel</a>
-                            {% endif %}
-                            <a href="/cikis" class="btn btn-secondary">Çıkış</a>
-                        </li>
-                    {% else %}
-                        <li class="user-menu">
-                            <a href="/giris" class="btn btn-secondary">Giriş Yap</a>
-                            <a href="/kayit" class="btn">Kayıt Ol</a>
-                        </li>
-                    {% endif %}
-                </ul>
-            </nav>
-        </div>
-    </header>
+    <!-- Auth Wall -->
+    <div class="auth-wall">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <i class="fab fa-youtube"></i>
+                ORENDER
+            </div>
+            <p class="auth-subtitle">Profesyonel YouTube Büyüme Platformu</p>
 
-    <main>
-        {{ content|safe }}
-    </main>
-
-    <footer>
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-column">
-                    <h3>BotLand</h3>
-                    <p>Profesyonel Discord bot çözümleri sunan lider platform.</p>
-                </div>
-                <div class="footer-column">
-                    <h3>Hızlı Bağlantılar</h3>
-                    <ul class="footer-links">
-                        <li><a href="/">Ana Sayfa</a></li>
-                        <li><a href="/hizmetler">Hizmetler</a></li>
-                        <li><a href="/iletisim">İletişim</a></li>
-                    </ul>
-                </div>
-                <div class="footer-column">
-                    <h3>Hizmetler</h3>
-                    <ul class="footer-links">
-                        <li><a href="/hizmet/log-botu-v2">Log Botu V2</a></li>
-                        <li><a href="/hizmet/guard-botu-v2">Guard Botu V2</a></li>
-                    </ul>
-                </div>
-                <div class="footer-column">
-                    <h3>İletişim</h3>
-                    <ul class="footer-links">
-                        <li><a href="https://discord.gg/botland" target="_blank">Discord Sunucumuz</a></li>
-                        <li><a href="/iletisim">İletişim Formu</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="copyright">
-                <p>&copy; 2024 BotLand. Tüm hakları saklıdır.</p>
-            </div>
-        </div>
-    </footer>
-</body>
-</html>'''
-
-# Sayfa içerikleri
-INDEX_CONTENT = '''
-<section class="hero">
-    <div class="container">
-        <div class="hero-content">
-            <h1>Profesyonel Discord Bot Çözümleri</h1>
-            <p>Sunucunuz için gelişmiş güvenlik ve yönetim botları. 7/24 destek ve en kaliteli hizmet garantisi.</p>
-            <a href="/hizmetler" class="btn">Hizmetleri Görüntüle</a>
-            <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord Sunucumuza Katıl</a>
-        </div>
-    </div>
-</section>
-
-<section class="services">
-    <div class="container">
-        <div class="section-title">
-            <h2>Premium Hizmetlerimiz</h2>
-            <p>Sunucunuzun ihtiyaçlarına özel geliştirilmiş profesyonel bot çözümleri</p>
-        </div>
-        <div class="services-grid">
-            <div class="service-card">
-                <div class="service-img">📊</div>
-                <div class="service-content">
-                    <h3>Log Botu V2</h3>
-                    <p>Sunucunuzdaki tüm aktiviteleri detaylı bir şekilde kaydeden gelişmiş log botu.</p>
-                    <div class="price">200TL</div>
-                    <a href="/hizmet/log-botu-v2" class="btn">Detaylı Bilgi</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-img">🛡️</div>
-                <div class="service-content">
-                    <h3>Guard Botu V2</h3>
-                    <p>Sunucunuzu kötü niyetli saldırılara karşı koruyan gelişmiş güvenlik botu.</p>
-                    <div class="price">200TL</div>
-                    <a href="/hizmet/guard-botu-v2" class="btn">Detaylı Bilgi</a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="features">
-    <div class="container">
-        <div class="section-title">
-            <h2>Neden Bizi Seçmelisiniz?</h2>
-            <p>Kalite ve güvenilirliğin adresi</p>
-        </div>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">⚡</div>
-                <h3>Hızlı Kurulum</h3>
-                <p>5 dakikadan kısa sürede botunuzu sunucunuza entegre edin</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🛡️</div>
-                <h3>7/24 Destek</h3>
-                <p>Profesyonel destek ekibimiz her zaman yanınızda</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔧</div>
-                <h3>Sürekli Güncelleme</h3>
-                <p>Botlarımız düzenli olarak güncellenir ve geliştirilir</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💎</div>
-                <h3>Premium Kalite</h3>
-                <p>En kaliteli kod ve en iyi performans garantisi</p>
-            </div>
-        </div>
-    </div>
-</section>
-'''
-
-SERVICES_CONTENT = '''
-<section class="services" style="padding-top: 120px;">
-    <div class="container">
-        <div class="section-title">
-            <h2>Tüm Hizmetlerimiz</h2>
-            <p>İhtiyacınıza en uygun botu seçin ve sunucunuzu güvenle yönetin</p>
-        </div>
-        <div class="services-grid">
-            <div class="service-card">
-                <div class="service-img">📊</div>
-                <div class="service-content">
-                    <h3>Log Botu V2</h3>
-                    <p>Sunucunuzdaki tüm aktiviteleri detaylı bir şekilde kaydeden gelişmiş log botu. Üyelerin giriş-çıkışlarını, mesaj silmelerini, kanal ve rol değişikliklerini kaydeder.</p>
-                    <div class="price">200TL</div>
-                    <a href="/hizmet/log-botu-v2" class="btn">Detaylı Bilgi</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-img">🛡️</div>
-                <div class="service-content">
-                    <h3>Guard Botu V2</h3>
-                    <p>Sunucunuzu kötü niyetli saldırılara karşı koruyan gelişmiş güvenlik botu. Otomatik anti-raid, anti-spam koruması ve çok daha fazlası.</p>
-                    <div class="price">200TL</div>
-                    <a href="/hizmet/guard-botu-v2" class="btn">Detaylı Bilgi</a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-'''
-
-CONTACT_CONTENT = '''
-<section class="contact">
-    <div class="container">
-        <div class="section-title">
-            <h2>İletişim</h2>
-            <p>Bize ulaşın, en kısa sürede dönüş yapalım</p>
-        </div>
-        
-        <div class="contact-form">
-            <form method="POST" action="/iletisim">
+            <!-- Login Form -->
+            <form id="loginForm" method="POST" action="{{ url_for('login') }}" style="display: block;">
                 <div class="form-group">
-                    <label for="isim">Adınız</label>
-                    <input type="text" class="form-control" id="isim" name="isim" required>
+                    <label for="loginEmail"><i class="fas fa-envelope"></i> E-posta</label>
+                    <input type="email" id="loginEmail" name="email" placeholder="ornek@gmail.com" required>
                 </div>
                 <div class="form-group">
-                    <label for="email">E-posta Adresiniz</label>
-                    <input type="email" class="form-control" id="email" name="email" required>
+                    <label for="loginPassword"><i class="fas fa-lock"></i> Şifre</label>
+                    <input type="password" id="loginPassword" name="password" placeholder="Şifrenizi girin" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Giriş Yap</button>
+                <div class="auth-switch">
+                    Hesabınız yok mu? <a href="#" onclick="showRegister()">Kayıt Olun</a>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="registerForm" method="POST" action="{{ url_for('register') }}" style="display: none;">
+                <div class="form-group">
+                    <label for="registerEmail"><i class="fas fa-envelope"></i> E-posta</label>
+                    <input type="email" id="registerEmail" name="email" placeholder="ornek@gmail.com" required>
                 </div>
                 <div class="form-group">
-                    <label for="mesaj">Mesajınız</label>
-                    <textarea class="form-control" id="mesaj" name="mesaj" required></textarea>
+                    <label for="registerPassword"><i class="fas fa-lock"></i> Şifre</label>
+                    <input type="password" id="registerPassword" name="password" placeholder="Minimum 6 karakter" required>
                 </div>
-                <button type="submit" class="btn">Gönder</button>
+                <div class="form-group">
+                    <label for="confirmPassword"><i class="fas fa-lock"></i> Şifre Tekrar</label>
+                    <input type="password" id="confirmPassword" name="confirm_password" placeholder="Şifrenizi tekrar girin" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Kayıt Ol</button>
+                <div class="auth-switch">
+                    Zaten hesabınız var mı? <a href="#" onclick="showLogin()">Giriş Yapın</a>
+                </div>
             </form>
         </div>
-        
-        <div style="text-align: center; margin-top: 40px;">
-            <h3>Diğer İletişim Yolları</h3>
-            <p>Discord sunucumuza katılarak doğrudan destek alabilirsiniz:</p>
-            <a href="https://discord.gg/botland" class="btn" target="_blank">Discord Sunucumuza Katıl</a>
-        </div>
     </div>
-</section>
-'''
 
-# Route definitions
-@app.route('/')
-def index():
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', INDEX_CONTENT))
-
-@app.route('/hizmetler')
-def hizmetler():
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', SERVICES_CONTENT))
-
-@app.route('/iletisim')
-def iletisim():
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', CONTACT_CONTENT))
-
-@app.route('/kayit')
-def kayit():
-    kayit_content = '''
-    <section class="contact">
-        <div class="container">
-            <div class="auth-forms">
-                <div class="auth-form">
-                    <h2>Kayıt Ol</h2>
-                    <form method="POST" action="/kayit">
-                        <div class="form-group">
-                            <label for="username">Kullanıcı Adı</label>
-                            <input type="text" class="form-control" id="username" name="username" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="email">E-posta</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="password">Şifre</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                        </div>
-                        <button type="submit" class="btn">Kayıt Ol</button>
-                    </form>
-                </div>
-                <div class="auth-form">
-                    <h2>Zaten Hesabınız Var mı?</h2>
-                    <p>Hesabınız varsa giriş yaparak sipariş verebilir ve siparişlerinizi takip edebilirsiniz.</p>
-                    <a href="/giris" class="btn btn-secondary">Giriş Yap</a>
-                </div>
-            </div>
-        </div>
-    </section>
-    '''
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_content))
-
-@app.route('/kayit', methods=['POST'])
-def kayit_post():
-    username = request.form.get('username')
-    email = request.form.get('email')
-    password = request.form.get('password')
-    
-    conn = get_db_connection()
-    
-    # Kullanıcı adı veya email zaten var mı kontrol et
-    existing_user = conn.execute('SELECT * FROM users WHERE username = ? OR email = ?', 
-                               (username, email)).fetchone()
-    
-    if existing_user:
-        conn.close()
-        flash_content = '''
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Flash Messages -->
         <div class="flash-messages">
-            <div class="flash-error">Bu kullanıcı adı veya e-posta zaten kullanılıyor!</div>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
         </div>
-        '''
-        kayit_with_flash = kayit_content.replace('<h2>Kayıt Ol</h2>', f'{flash_content}<h2>Kayıt Ol</h2>')
-        return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_with_flash))
-    
-    # Yeni kullanıcı oluştur
-    hashed_password = generate_password_hash(password)
-    conn.execute('INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-                (username, email, hashed_password))
-    conn.commit()
-    conn.close()
-    
-    flash_content = '''
-    <div class="flash-messages">
-        <div class="flash-success">Kayıt başarılı! Giriş yapabilirsiniz.</div>
-    </div>
-    '''
-    kayit_with_flash = kayit_content.replace('<h2>Kayıt Ol</h2>', f'{flash_content}<h2>Kayıt Ol</h2>')
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', kayit_with_flash))
 
-@app.route('/giris')
-def giris():
-    giris_content = '''
-    <section class="contact">
-        <div class="container">
-            <div class="auth-forms">
-                <div class="auth-form">
-                    <h2>Giriş Yap</h2>
-                    <form method="POST" action="/giris">
-                        <div class="form-group">
-                            <label for="username">Kullanıcı Adı</label>
-                            <input type="text" class="form-control" id="username" name="username" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="password">Şifre</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                        </div>
-                        <button type="submit" class="btn">Giriş Yap</button>
-                    </form>
-                </div>
-                <div class="auth-form">
-                    <h2>Hesabınız Yok mu?</h2>
-                    <p>Hesap oluşturarak sipariş verebilir ve siparişlerinizi takip edebilirsiniz.</p>
-                    <a href="/kayit" class="btn btn-secondary">Kayıt Ol</a>
-                </div>
+        <!-- Header -->
+        <header>
+            <div class="container nav-container">
+                <a href="#" class="logo">
+                    <i class="fab fa-youtube"></i>
+                    ORENDER
+                </a>
+                <nav class="nav-links">
+                    <a href="#services"><i class="fas fa-rocket"></i> Hizmetler</a>
+                    <a href="#dashboard"><i class="fas fa-chart-line"></i> Dashboard</a>
+                    <a href="https://discord.gg/gqQGwzrN7t" target="_blank"><i class="fab fa-discord"></i> Discord</a>
+                    <div class="user-menu">
+                        <span class="user-email">{{ session.email if session.email else '' }}</span>
+                        <a href="{{ url_for('logout') }}" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Çıkış
+                        </a>
+                    </div>
+                </nav>
             </div>
-        </div>
-    </section>
-    '''
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', giris_content))
+        </header>
 
-@app.route('/giris', methods=['POST'])
-def giris_post():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    
-    conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-    conn.close()
-    
-    if user and check_password_hash(user['password'], password):
-        session['user_id'] = user['id']
-        session['username'] = user['username']
-        session['is_admin'] = user['is_admin']
-        return redirect('/')
-    else:
-        flash_content = '''
-        <div class="flash-messages">
-            <div class="flash-error">Kullanıcı adı veya şifre hatalı!</div>
-        </div>
-        '''
-        giris_with_flash = giris_content.replace('<h2>Giriş Yap</h2>', f'{flash_content}<h2>Giriş Yap</h2>')
-        return render_template_string(BASE_HTML.replace('{{ content|safe }}', giris_with_flash))
-
-@app.route('/cikis')
-def cikis():
-    session.clear()
-    return redirect('/')
-
-@app.route('/hizmet/<hizmet_adi>')
-def hizmet_detay(hizmet_adi):
-    hizmetler = {
-        'log-botu-v2': {
-            'ad': 'Log Botu V2',
-            'fiyat': '200TL',
-            'aciklama': 'Sunucunuzdaki tüm aktiviteleri detaylı bir şekilde kaydeden gelişmiş log botu. Üyelerin giriş-çıkışlarını, mesaj silmelerini, kanal ve rol değişikliklerini, sunucu güncellemelerini ve daha birçok olayı kaydeder. Web paneli ile kolay yönetim imkanı sunar.',
-            'ozellikler': [
-                'Detaylı üye giriş-çıkış kayıtları',
-                'Mesaj silme/düzenleme logları',
-                'Kanal ve rol değişiklikleri takibi',
-                'Sunucu ayar değişiklikleri kaydı',
-                'Özel kanal ve rol logları',
-                'Esaslı filtreleme seçenekleri',
-                'Web paneli ile kolay yönetim',
-                '7/24 aktif kayıt sistemi',
-                'Özel raporlama özellikleri'
-            ]
-        },
-        'guard-botu-v2': {
-            'ad': 'Guard Botu V2',
-            'fiyat': '200TL',
-            'aciklama': 'Sunucunuzu kötü niyetli saldırılara karşı koruyan gelişmiş güvenlik botu. Otomatik anti-raid, anti-spam, anti-nuke koruması ve çok daha fazlası. Sunucunuzu 7/24 güvende tutar.',
-            'ozellikler': [
-                'Gelişmiş anti-raid koruması',
-                'Akıllı anti-spam filtresi',
-                'Anti-nuke (sunucu sabotajı) önleme',
-                'Otomatik şüpheli hesap tespiti',
-                'Beyaz liste/karaliste yönetimi',
-                '7/24 aktif koruma modu',
-                'Anlık bildirim sistemi',
-                'Özel güvenlik ayarları',
-                'Backup ve restore özellikleri'
-            ]
-        }
-    }
-    
-    if hizmet_adi in hizmetler:
-        hizmet = hizmetler[hizmet_adi]
-        
-        # Sipariş butonu - giriş yapmış kullanıcılar için
-        siparis_butonu = '''
-        <div style="text-align: center; margin-top: 30px;">
-            <h3>Bu hizmeti satın almak istiyor musunuz?</h3>
-            <form method="POST" action="/siparis-ver" style="display: inline-block;">
-                <input type="hidden" name="service_type" value="''' + hizmet['ad'] + '''">
-                <textarea name="description" placeholder="Özel isteklerinizi buraya yazın..." style="width: 100%; margin: 10px 0; padding: 10px; background: var(--darker); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 5px;"></textarea>
-                <button type="submit" class="btn btn-success">Sipariş Ver</button>
-            </form>
-        </div>
-        ''' if 'user_id' in session else '''
-        <div style="text-align: center; margin-top: 30px;">
-            <h3>Bu hizmeti satın almak için giriş yapın</h3>
-            <a href="/giris" class="btn">Giriş Yap</a>
-            <a href="/kayit" class="btn btn-secondary">Kayıt Ol</a>
-        </div>
-        '''
-        
-        service_detail_content = f'''
-        <section class="service-detail">
-            <div class="container">
-                <div class="service-header">
-                    <h1>{hizmet['ad']}</h1>
-                    <div class="service-price">{hizmet['fiyat']}</div>
-                    <p class="service-description">{hizmet['aciklama']}</p>
-                    <a href="/iletisim" class="btn">İletişime Geç</a>
-                    <a href="https://discord.gg/botland" class="btn btn-secondary" target="_blank">Discord'da Sor</a>
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container hero-content">
+                <h1>YouTube Kanalınızı Profesyonelce Büyütün</h1>
+                <p>Gerçek kullanıcı etkileşimi, güvenli büyüme stratejileri ve premium hizmetlerle YouTube algoritmasında üst sıralara çıkın</p>
+                
+                <div class="hero-buttons">
+                    <a href="#services" class="hero-btn primary">
+                        <i class="fas fa-rocket"></i> Hizmetleri Gör
+                    </a>
+                    <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="hero-btn secondary">
+                        <i class="fab fa-discord"></i> Discord'a Katıl
+                    </a>
                 </div>
                 
-                <div class="features-list">
-                    <h2>Özellikler</h2>
-                    <ul>
-                        {"".join([f'<li>{ozellik}</li>' for ozellik in hizmet['ozellikler']])}
-                    </ul>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-number">10K+</div>
+                        <div class="stat-label">Mutlu Müşteri</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">500K+</div>
+                        <div class="stat-label">Başarılı İşlem</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">99.8%</div>
+                        <div class="stat-label">Başarı Oranı</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">7/24</div>
+                        <div class="stat-label">Destek</div>
+                    </div>
                 </div>
-                
-                {siparis_butonu}
             </div>
         </section>
-        '''
-        return render_template_string(BASE_HTML.replace('{{ content|safe }}', service_detail_content))
-    else:
-        return redirect(url_for('hizmetler'))
 
-@app.route('/siparis-ver', methods=['POST'])
-def siparis_ver():
-    if 'user_id' not in session:
-        return redirect('/giris')
-    
-    service_type = request.form.get('service_type')
-    description = request.form.get('description', '')
-    
-    conn = get_db_connection()
-    conn.execute('INSERT INTO orders (user_id, service_type, description) VALUES (?, ?, ?)',
-                (session['user_id'], service_type, description))
-    conn.commit()
-    conn.close()
-    
-    return redirect('/siparislerim')
+        <!-- Services Section -->
+        <section id="services" class="services">
+            <div class="container">
+                <h2 class="section-title">Premium Hizmetlerimiz</h2>
+                <p class="section-subtitle">YouTube algoritmasına uyumlu, güvenli ve etkili büyüme çözümleri</p>
+                
+                <div class="services-grid">
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <h3>YouTube Abone Paketi</h3>
+                        <p>Gerçek ve aktif kullanıcılardan organik abone kazanın</p>
+                        <ul class="service-features">
+                            <li><i class="fas fa-check"></i> Gerçek kullanıcı etkileşimi</li>
+                            <li><i class="fas fa-check"></i> Yavaş ve doğal büyüme</li>
+                            <li><i class="fas fa-check"></i> YouTube TOS uyumlu</li>
+                            <li><i class="fas fa-check"></i> 30 gün garantili</li>
+                        </ul>
+                        <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="discord-cta">
+                            <i class="fab fa-discord"></i> Fiyat için Discord
+                        </a>
+                    </div>
 
-@app.route('/siparislerim')
-def siparislerim():
-    if 'user_id' not in session:
-        return redirect('/giris')
-    
-    conn = get_db_connection()
-    orders = conn.execute('''
-        SELECT o.*, u.username 
-        FROM orders o 
-        JOIN users u ON o.user_id = u.id 
-        WHERE o.user_id = ? 
-        ORDER BY o.created_at DESC
-    ''', (session['user_id'],)).fetchall()
-    conn.close()
-    
-    orders_html = ''
-    for order in orders:
-        status_class = f"status-{order['status']}"
-        orders_html += f'''
-        <tr>
-            <td>{order['id']}</td>
-            <td>{order['service_type']}</td>
-            <td>{order['description'] or '-'}</td>
-            <td class="{status_class}">{order['status'].title()}</td>
-            <td>{order['created_at']}</td>
-            <td>{order['admin_response'] or '-'}</td>
-        </tr>
-        '''
-    
-    siparislerim_content = f'''
-    <section class="user-orders">
-        <div class="container">
-            <h2>Siparişlerim</h2>
-            <table class="orders-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Hizmet</th>
-                        <th>Açıklama</th>
-                        <th>Durum</th>
-                        <th>Tarih</th>
-                        <th>Admin Yanıtı</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {orders_html if orders_html else '<tr><td colspan="6" style="text-align: center;">Henüz siparişiniz bulunmuyor.</td></tr>'}
-                </tbody>
-            </table>
-        </div>
-    </section>
-    '''
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', siparislerim_content))
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-eye"></i>
+                        </div>
+                        <h3>YouTube İzlenme Artırma</h3>
+                        <p>Videolarınızın önerilere çıkmasını sağlayın</p>
+                        <ul class="service-features">
+                            <li><i class="fas fa-check"></i> Yüksek tutma oranı</li>
+                            <li><i class="fas fa-check"></i> Organik izlenme patterni</li>
+                            <li><i class="fas fa-check"></i> SEO optimizasyonu</li>
+                            <li><i class="fas fa-check"></i> Anlık başlangıç</li>
+                        </ul>
+                        <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="discord-cta">
+                            <i class="fab fa-discord"></i> Fiyat için Discord
+                        </a>
+                    </div>
 
-@app.route('/admin')
-def admin_panel():
-    if not session.get('is_admin'):
-        return redirect('/')
-    
-    conn = get_db_connection()
-    orders = conn.execute('''
-        SELECT o.*, u.username 
-        FROM orders o 
-        JOIN users u ON o.user_id = u.id 
-        ORDER BY o.created_at DESC
-    ''').fetchall()
-    conn.close()
-    
-    orders_html = ''
-    for order in orders:
-        status_class = f"status-{order['status']}"
-        
-        # Durum değiştirme butonları
-        status_buttons = f'''
-        <form method="POST" action="/admin/siparis-durum" style="display: inline;">
-            <input type="hidden" name="order_id" value="{order['id']}">
-            <button type="submit" name="status" value="completed" class="btn btn-success">Tamamlandı</button>
-            <button type="submit" name="status" value="cancelled" class="btn btn-danger">İptal</button>
-        </form>
-        ''' if order['status'] == 'pending' else f'<span class="{status_class}">{order["status"].title()}</span>'
-        
-        # Admin yanıtı formu
-        response_form = f'''
-        <form method="POST" action="/admin/yanit-ver">
-            <input type="hidden" name="order_id" value="{order['id']}">
-            <textarea name="response" placeholder="Yanıtınızı yazın..." style="width: 100%; margin: 5px 0; padding: 5px; background: var(--darker); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 3px; font-size: 12px;"></textarea>
-            <button type="submit" class="btn" style="padding: 5px 10px; font-size: 12px;">Yanıt Ver</button>
-        </form>
-        '''
-        
-        orders_html += f'''
-        <tr>
-            <td>{order['id']}</td>
-            <td>{order['username']}</td>
-            <td>{order['service_type']}</td>
-            <td>{order['description'] or '-'}</td>
-            <td>{status_buttons}</td>
-            <td>{order['created_at']}</td>
-            <td>
-                {order['admin_response'] or '-'}
-                {response_form}
-            </td>
-        </tr>
-        '''
-    
-    admin_content = f'''
-    <section class="admin-panel">
-        <div class="container">
-            <h2>Admin Panel - Sipariş Yönetimi</h2>
-            <table class="orders-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Kullanıcı</th>
-                        <th>Hizmet</th>
-                        <th>Açıklama</th>
-                        <th>Durum</th>
-                        <th>Tarih</th>
-                        <th>Yanıt</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {orders_html if orders_html else '<tr><td colspan="7" style="text-align: center;">Henüz sipariş bulunmuyor.</td></tr>'}
-                </tbody>
-            </table>
-        </div>
-    </section>
-    '''
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', admin_content))
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <h3>YouTube Yorum Hizmeti</h3>
+                        <p>Özgün ve etkileşim artırıcı yorumlar</p>
+                        <ul class="service-features">
+                            <li><i class="fas fa-check"></i> Özenle yazılmış yorumlar</li>
+                            <li><i class="fas fa-check"></i> Türkçe/İngilizce seçenek</li>
+                            <li><i class="fas fa-check"></i> Spam filtresine takılmaz</li>
+                            <li><i class="fas fa-check"></i> Etkileşim artışı</li>
+                        </ul>
+                        <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="discord-cta">
+                            <i class="fab fa-discord"></i> Fiyat için Discord
+                        </a>
+                    </div>
 
-@app.route('/admin/siparis-durum', methods=['POST'])
-def admin_siparis_durum():
-    if not session.get('is_admin'):
-        return redirect('/')
-    
-    order_id = request.form.get('order_id')
-    status = request.form.get('status')
-    
-    conn = get_db_connection()
-    conn.execute('UPDATE orders SET status = ? WHERE id = ?', (status, order_id))
-    conn.commit()
-    conn.close()
-    
-    return redirect('/admin')
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <h3>Shorts Görüntülenme</h3>
+                        <p>Shorts videolarınızı viral yapın</p>
+                        <ul class="service-features">
+                            <li><i class="fas fa-check"></i> Hızlı görüntülenme</li>
+                            <li><i class="fas fa-check"></i> Explore'a çıkma garantisi</li>
+                            <li><i class="fas fa-check"></i> Yüksek etkileşim oranı</li>
+                            <li><i class="fas fa-check"></i> Mobil uyumlu</li>
+                        </ul>
+                        <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="discord-cta">
+                            <i class="fab fa-discord"></i> Fiyat için Discord
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-@app.route('/admin/yanit-ver', methods=['POST'])
-def admin_yanit_ver():
-    if not session.get('is_admin'):
-        return redirect('/')
-    
-    order_id = request.form.get('order_id')
-    response = request.form.get('response')
-    
-    conn = get_db_connection()
-    conn.execute('UPDATE orders SET admin_response = ? WHERE id = ?', (response, order_id))
-    conn.commit()
-    conn.close()
-    
-    return redirect('/admin')
+        <!-- Dashboard -->
+        <section id="dashboard" class="dashboard">
+            <div class="container">
+                <div class="dashboard-welcome">
+                    <h2>Hoş Geldiniz, {{ session.email if session.email else 'Kullanıcı' }}!</h2>
+                    <p>YouTube büyüme yolculuğunuzda yanınızdayız. Premium hizmetlerimizle kanalınızı bir üst seviyeye taşıyın ve YouTube algoritmasında öne çıkın. Gerçek etkileşim, güvenli büyüme ve profesyonel destek ile başarıya ulaşın.</p>
+                    <div style="margin-top: 2rem;">
+                        <a href="https://discord.gg/gqQGwzrN7t" target="_blank" class="btn btn-discord" style="width: auto; padding: 15px 30px;">
+                            <i class="fab fa-discord"></i> Discord Topluluğumuza Katıl
+                        </a>
+                    </div>
+                </div>
 
-@app.route('/iletisim', methods=['POST'])
-def iletisim_formu():
-    isim = request.form.get('isim')
-    email = request.form.get('email')
-    mesaj = request.form.get('mesaj')
-    
-    flash_content = '''
-    <div class="flash-messages">
-        <div class="flash-success">Mesajınız başarıyla gönderildi! En kısa sürede sizinle iletişime geçeceğiz.</div>
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <h3>Toplam Harcama</h3>
+                        <div class="number">$0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Tamamlanan Sipariş</h3>
+                        <div class="number">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Devam Eden Sipariş</h3>
+                        <div class="number">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Kullanıcı Puanı</h3>
+                        <div class="number">5.0</div>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
-    '''
+
+    <script>
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+        }
+
+        function showLogin() {
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+        }
+
+        // Auto-hide flash messages
+        setTimeout(() => {
+            document.querySelectorAll('.flash').forEach(flash => {
+                flash.style.animation = 'slideOut 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                setTimeout(() => flash.remove(), 400);
+            });
+        }, 5000);
+
+        // Check auth status
+        {% if session.user_id %}
+            document.querySelector('.auth-wall').style.display = 'none';
+            document.querySelector('.main-content').style.display = 'block';
+        {% endif %}
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+'''
+
+def get_db_connection():
+    """Get database connection with retry logic"""
+    max_retries = 5
+    for i in range(max_retries):
+        try:
+            conn = sqlite3.connect('users.db', timeout=30)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e) and i < max_retries - 1:
+                time.sleep(0.1)
+                continue
+            else:
+                raise e
+
+def init_db():
+    """Initialize database"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  email TEXT UNIQUE NOT NULL,
+                  password TEXT NOT NULL,
+                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/login', methods=['POST'])
+def login():
+    email = request.form['email']
+    password = request.form['password']
     
-    contact_with_flash = CONTACT_CONTENT.replace('</div>\n        \n        <div class="contact-form">', f'</div>\n        {flash_content}\n        <div class="contact-form">')
-    return render_template_string(BASE_HTML.replace('{{ content|safe }}', contact_with_flash))
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        user = c.fetchone()
+        conn.close()
+        
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            session['email'] = user['email']
+            flash('Başarıyla giriş yapıldı!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('E-posta veya şifre hatalı!', 'error')
+            return render_template_string(HTML_TEMPLATE)
+    except Exception as e:
+        flash('Bir hata oluştu. Lütfen tekrar deneyin.', 'error')
+        return render_template_string(HTML_TEMPLATE)
+
+@app.route('/register', methods=['POST'])
+def register():
+    email = request.form['email']
+    password = request.form['password']
+    confirm_password = request.form['confirm_password']
+    
+    if len(password) < 6:
+        flash('Şifre en az 6 karakter olmalıdır!', 'error')
+        return render_template_string(HTML_TEMPLATE)
+    
+    if password != confirm_password:
+        flash('Şifreler eşleşmiyor!', 'error')
+        return render_template_string(HTML_TEMPLATE)
+    
+    hashed_password = generate_password_hash(password)
+    
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("INSERT INTO users (email, password) VALUES (?, ?)", 
+                 (email, hashed_password))
+        conn.commit()
+        conn.close()
+        
+        flash('Kayıt başarılı! Giriş yapabilirsiniz.', 'success')
+        return redirect(url_for('index'))
+    except sqlite3.IntegrityError:
+        flash('Bu e-posta zaten kayıtlı!', 'error')
+        return render_template_string(HTML_TEMPLATE)
+    except Exception as e:
+        flash('Bir hata oluştu. Lütfen tekrar deneyin.', 'error')
+        return render_template_string(HTML_TEMPLATE)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Başarıyla çıkış yapıldı!', 'success')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    init_db()
+    app.run(debug=True)
