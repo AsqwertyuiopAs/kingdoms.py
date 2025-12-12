@@ -1,6 +1,7 @@
 from flask import Flask, render_template_string
 
-app = Flask(__name__)
+# kingdoms.py adında olduğu için Flask değişkenini 'kingdoms' yapıyorum
+kingdoms = Flask(__name__)
 
 # Ana sayfa HTML
 index_html = '''
@@ -384,18 +385,6 @@ index_html = '''
                 console.log('Video hazır!');
             };
         });
-        
-        // Video ses kontrolü
-        function toggleMute() {
-            const iframe = document.querySelector('iframe');
-            iframe.contentWindow.postMessage('{"event":"command","func":"mute","args":""}', '*');
-        }
-        
-        // Video oynat/durdur
-        function togglePlay() {
-            const iframe = document.querySelector('iframe');
-            iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-        }
     </script>
 </body>
 </html>
@@ -550,18 +539,19 @@ ayar_html = '''
 </html>
 '''
 
-@app.route('/')
+# ROUTE'lar - DİKKAT: @kingdoms olarak değiştirildi!
+@kingdoms.route('/')
 def index():
     return render_template_string(index_html)
 
-@app.route('/ayar')
+@kingdoms.route('/ayar')
 def ayar():
     return render_template_string(ayar_html)
 
 # Render için gerekli konfigürasyon
 if __name__ == '__main__':
-    # Render.com'da çalışırken
-    # app.run(host='0.0.0.0', port=10000, debug=False)
+    # Render.com'da çalışması için
+    kingdoms.run(host='0.0.0.0', port=10000, debug=False)
     
-    # Lokal test için
-    app.run(debug=True, port=5000)
+    # Lokal test için:
+    # kingdoms.run(debug=True, port=5000)
