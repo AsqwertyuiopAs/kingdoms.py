@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, url_for
+from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
@@ -448,7 +448,7 @@ HTML_TEMPLATE = """
     <div class="header" id="header">
         <div class="nav-container">
             <div class="logo-left">
-                <img src="{{ url_for('static', filename='logo.jpg') }}" class="logo-img" alt="SalvoMotivation Logo">
+                <img src="/static/logo.jpg" class="logo-img" alt="SalvoMotivation Logo">
                 <span class="logo-text">SALVOMOTIVATION</span>
             </div>
             <ul class="nav-menu">
@@ -461,7 +461,7 @@ HTML_TEMPLATE = """
     </div>
     <div class="hero-banner" id="home">
         <div class="banner-wrapper">
-            <img src="{{ url_for('static', filename='banner.webp') }}" class="banner-img" alt="Motivation Banner">
+            <img src="/static/banner.webp" class="banner-img" alt="Motivation Banner">
         </div>
     </div>
     <div class="main-content" id="about">
